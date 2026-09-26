@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: Distributed Job Platform API
+  version: 1.1.0-mvp
+  description: API for project-scoped predefined background jobs. Delivery is at least once; automatic attempts in one run share a stable effectId.
+servers:
+  - url: https://api.example.com/api/v1
+paths:
+  /auth/register:
+    post:
+      security: []
+      summary: Register a personal account and default project
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RegisterRequest' } } } }
+      responses: { '201': { description: Registered, content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } } }, '400': { $ref: '#/components/responses/ValidationError' }, '409': { $ref: '#/components/responses/Conflict' } }
+  /auth/login:
+    post:
+      security: []
+      summary: Create a JWT session
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } } }
+      responses: { '200': { description: Session, content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } } }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /auth/refresh:
+    post:
+      security: []
+      summary: Rotate a refresh token
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RefreshRequest' } } } }
+      responses: { '200': { description: Session, content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } } }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /projects:
+    get:
+      security: [ { bearerAuth: [] } ]
+      summary: List the caller's projects
+      responses: { '200': { description: Projects, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Project' } } } } } }
+    post:
+      security: [ { bearerAuth: [] } ]
+      summary: Create a personal project
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateProjectRequest' } } } }
+      responses: { '201': { description: Project, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }, '409': { $ref: '#/components/responses/Conflict' } }
+  /projects/{projectId}/api-keys:
+    get:
+      security: [ { bearerAuth: [] } ]
+      summary: List API-key metadata for a project
+      parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+      responses: { '200': { description: Keys, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ApiKeyMetadata' } } } } }, '404': { $ref: '#/components/responses/NotFound' } }
+    post:
+      security: [ { bearerAuth: [] } ]
+      summary: Create a project API key; plaintext key is returned once
+      parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateApiKeyRequest' } } } }
+      responses: { '201': { description: New key, content: { application/json: { schema: { $ref: '#/components/schemas/CreatedApiKey' } } } }, '404': { $ref: '#/components/responses/NotFound' } }
+  /api-keys/{keyId}/revoke:
+    post:
+      security: [ { bearerAuth: [] } ]
+      summary: Revoke one API key
+      parameters: [ { $ref: '#/components/parameters/KeyId' } ]
+      responses: { '204': { description: Revoked }, '404': { $ref: '#/components/responses/NotFound' } }
+  /projects/{projectId}/jobs:
+    post:
+      security: [ { bearerAuth: [] }, { apiKeyAuth: [] } ]
+      summary: Submit a project job
+      parameters: [ { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/IdempotencyKey' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateJobRequest' } } } }
+      responses: { '202': { description: Durable acceptance, content: { application/json: { schema: { $ref: '#/components/schemas/JobAccepted' } } } }, '400': { $ref: '#/components/responses/ValidationError' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' }, '429': { $ref: '#/components/responses/RateLimited' } }
+    get:
+      security: [ { bearerAuth: [] }, { apiKeyAuth: [] } ]
+      summary: List jobs in a project
+      parameters: [ { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/Cursor' }, { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }, { name: status, in: query, schema: { $ref: '#/components/schemas/JobStatus' } } ]
+      responses: { '200': { description: Page, content: { application/json: { schema: { $ref: '#/components/schemas/JobPage' } } } }, '404': { $ref: '#/components/responses/NotFound' } }
+  /projects/{projectId}/jobs/{jobId}:
+    get:
+      security: [ { bearerAuth: [] }, { apiKeyAuth: [] } ]
+      summary: Get a job, runs, and attempts
+      parameters: [ { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/JobId' } ]
+      responses: { '200': { description: Job, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }, '404': { $ref: '#/components/responses/NotFound' } }
+  /projects/{projectId}/jobs/{jobId}/cancel:
+    post:
+      security: [ { bearerAuth: [] }, { apiKeyAuth: [] } ]
+      summary: Cancel pending or queued job
+      parameters: [ { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/JobId' } ]
+      responses: { '200': { description: Job, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } }
+  /projects/{projectId}/jobs/{jobId}/retry:
+    post:
+      security: [ { bearerAuth: [] }, { apiKeyAuth: [] } ]
+      summary: Start a new manual retry run for a final failed job
+      parameters: [ { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/JobId' }, { $ref: '#/components/parameters/IdempotencyKey' } ]
+      responses: { '202': { description: New retry run accepted, content: { application/json: { schema: { $ref: '#/components/schemas/JobAccepted' } } } }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } }
+  /operator/workers:
+    get:
+      security: [ { bearerAuth: [] } ]
+      summary: List worker health; operator role required
+      responses: { '200': { description: Workers, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/WorkerHealth' } } } } }, '403': { $ref: '#/components/responses/Forbidden' } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    apiKeyAuth: { type: apiKey, in: header, name: X-API-Key }
+  parameters:
+    ProjectId: { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    JobId: { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    KeyId: { name: keyId, in: path, required: true, schema: { type: string, format: uuid } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 128 } }
+    Cursor: { name: cursor, in: query, schema: { type: string } }
+  responses:
+    ValidationError: { description: Invalid request, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unauthorized: { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Forbidden: { description: Permission denied, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    NotFound: { description: Resource not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Conflict: { description: State or idempotency conflict, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    RateLimited: { description: Quota exceeded, headers: { Retry-After: { schema: { type: integer } } }, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  schemas:
+    RegisterRequest: { type: object, additionalProperties: false, required: [email, password, projectName], properties: { email: { type: string, format: email }, password: { type: string, minLength: 12, maxLength: 128 }, projectName: { type: string, minLength: 3, maxLength: 100 } } }
+    LoginRequest: { type: object, additionalProperties: false, required: [email, password], properties: { email: { type: string, format: email }, password: { type: string } } }
+    RefreshRequest: { type: object, additionalProperties: false, required: [refreshToken], properties: { refreshToken: { type: string, minLength: 20 } } }
+    AuthSession: { type: object, required: [accessToken, refreshToken, expiresIn], properties: { accessToken: { type: string }, refreshToken: { type: string }, expiresIn: { type: integer, example: 900 } } }
+    Project: { type: object, required: [id, name, createdAt], properties: { id: { type: string, format: uuid }, name: { type: string }, createdAt: { type: string, format: date-time } } }
+    CreateProjectRequest: { type: object, additionalProperties: false, required: [name], properties: { name: { type: string, minLength: 3, maxLength: 100 } } }
+    CreateApiKeyRequest: { type: object, additionalProperties: false, required: [name], properties: { name: { type: string, minLength: 3, maxLength: 100 } } }
+    ApiKeyMetadata: { type: object, required: [id, name, prefix, status, createdAt], properties: { id: { type: string, format: uuid }, name: { type: string }, prefix: { type: string }, status: { enum: [ACTIVE, REVOKED] }, createdAt: { type: string, format: date-time }, lastUsedAt: { type: string, format: date-time, nullable: true } } }
+    CreatedApiKey: { allOf: [ { $ref: '#/components/schemas/ApiKeyMetadata' }, { type: object, required: [plaintextKey], properties: { plaintextKey: { type: string } } } ] }
+    CreateJobRequest:
+      oneOf:
+        - $ref: '#/components/schemas/ReportJobRequest'
+        - $ref: '#/components/schemas/EmailJobRequest'
+        - $ref: '#/components/schemas/FileJobRequest'
+        - $ref: '#/components/schemas/NotificationJobRequest'
+      discriminator:
+        propertyName: jobType
+        mapping:
+          GENERATE_REPORT: '#/components/schemas/ReportJobRequest'
+          SEND_EMAIL: '#/components/schemas/EmailJobRequest'
+          PROCESS_FILE: '#/components/schemas/FileJobRequest'
+          SEND_NOTIFICATION: '#/components/schemas/NotificationJobRequest'
+    ReportJobRequest: { type: object, additionalProperties: false, required: [jobType, payload, priority], properties: { jobType: { type: string, enum: [GENERATE_REPORT] }, payload: { $ref: '#/components/schemas/ReportPayload' }, priority: { type: string, enum: [HIGH, DEFAULT, LOW] }, scheduledAt: { type: string, format: date-time }, maxAttempts: { type: integer, minimum: 1, maximum: 4, default: 4 }, webhookUrl: { type: string, format: uri, maxLength: 2048 } } }
+    EmailJobRequest: { type: object, additionalProperties: false, required: [jobType, payload, priority], properties: { jobType: { type: string, enum: [SEND_EMAIL] }, payload: { $ref: '#/components/schemas/EmailPayload' }, priority: { type: string, enum: [HIGH, DEFAULT, LOW] }, scheduledAt: { type: string, format: date-time }, maxAttempts: { type: integer, minimum: 1, maximum: 4, default: 4 }, webhookUrl: { type: string, format: uri, maxLength: 2048 } } }
+    FileJobRequest: { type: object, additionalProperties: false, required: [jobType, payload, priority], properties: { jobType: { type: string, enum: [PROCESS_FILE] }, payload: { $ref: '#/components/schemas/FilePayload' }, priority: { type: string, enum: [HIGH, DEFAULT, LOW] }, scheduledAt: { type: string, format: date-time }, maxAttempts: { type: integer, minimum: 1, maximum: 4, default: 4 }, webhookUrl: { type: string, format: uri, maxLength: 2048 } } }
+    NotificationJobRequest: { type: object, additionalProperties: false, required: [jobType, payload, priority], properties: { jobType: { type: string, enum: [SEND_NOTIFICATION] }, payload: { $ref: '#/components/schemas/NotificationPayload' }, priority: { type: string, enum: [HIGH, DEFAULT, LOW] }, scheduledAt: { type: string, format: date-time }, maxAttempts: { type: integer, minimum: 1, maximum: 4, default: 4 }, webhookUrl: { type: string, format: uri, maxLength: 2048 } } }
+    ReportPayload: { type: object, additionalProperties: false, required: [template, periodStart, periodEnd], properties: { template: { enum: [SALES_SUMMARY, JOB_AUDIT] }, periodStart: { type: string, format: date }, periodEnd: { type: string, format: date } } }
+    EmailPayload: { type: object, additionalProperties: false, required: [template, recipient, variables], properties: { template: { enum: [ORDER_CONFIRMED, JOB_FAILED] }, recipient: { type: string, format: email }, variables: { type: object, additionalProperties: { type: string }, maxProperties: 20 } } }
+    FilePayload: { type: object, additionalProperties: false, required: [sourceObjectRef, operation], properties: { sourceObjectRef: { type: string, maxLength: 512 }, operation: { enum: [CSV_VALIDATE, JSON_NORMALIZE] } } }
+    NotificationPayload: { type: object, additionalProperties: false, required: [channel, recipient, template], properties: { channel: { enum: [EMAIL] }, recipient: { type: string, format: email }, template: { enum: [JOB_COMPLETED, JOB_FAILED] } } }
+    JobAccepted: { type: object, required: [jobId, runId, status, statusUrl], properties: { jobId: { type: string, format: uuid }, runId: { type: string, format: uuid }, status: { $ref: '#/components/schemas/JobStatus' }, statusUrl: { type: string } } }
+    JobStatus: { type: string, enum: [PENDING, QUEUED, RUNNING, RETRY_WAIT, COMPLETED, FAILED, CANCELLED] }
+    Job: { type: object, required: [id, projectId, jobType, status, priority, createdAt, runs], properties: { id: { type: string, format: uuid }, projectId: { type: string, format: uuid }, jobType: { type: string }, status: { $ref: '#/components/schemas/JobStatus' }, priority: { enum: [HIGH, DEFAULT, LOW] }, scheduledAt: { type: string, format: date-time, nullable: true }, createdAt: { type: string, format: date-time }, completedAt: { type: string, format: date-time, nullable: true }, runs: { type: array, items: { $ref: '#/components/schemas/JobRun' } } } }
+    JobRun: { type: object, required: [id, runNumber, status, attemptCount, maxAttempts], properties: { id: { type: string, format: uuid }, runNumber: { type: integer }, status: { $ref: '#/components/schemas/JobStatus' }, attemptCount: { type: integer }, maxAttempts: { type: integer }, executions: { type: array, items: { $ref: '#/components/schemas/ExecutionAttempt' } } } }
+    ExecutionAttempt: { type: object, properties: { id: { type: string, format: uuid }, attemptNumber: { type: integer }, status: { enum: [RUNNING, COMPLETED, FAILED, RETRY_SCHEDULED, ABANDONED] }, startedAt: { type: string, format: date-time, nullable: true }, finishedAt: { type: string, format: date-time, nullable: true }, errorCode: { type: string, nullable: true }, result: { oneOf: [ { $ref: '#/components/schemas/ReportResult' }, { $ref: '#/components/schemas/EmailResult' }, { $ref: '#/components/schemas/FileResult' }, { $ref: '#/components/schemas/NotificationResult' } ], nullable: true }, resultRef: { type: string, nullable: true } } }
+    ReportResult: { type: object, additionalProperties: false, required: [type, artifactRef], properties: { type: { type: string, enum: [GENERATE_REPORT] }, artifactRef: { type: string, maxLength: 512 } } }
+    EmailResult: { type: object, additionalProperties: false, required: [type, providerMessageId], properties: { type: { type: string, enum: [SEND_EMAIL] }, providerMessageId: { type: string, maxLength: 256 } } }
+    FileResult: { type: object, additionalProperties: false, required: [type, artifactRef, recordCount], properties: { type: { type: string, enum: [PROCESS_FILE] }, artifactRef: { type: string, maxLength: 512 }, recordCount: { type: integer, minimum: 0 } } }
+    NotificationResult: { type: object, additionalProperties: false, required: [type, providerMessageId], properties: { type: { type: string, enum: [SEND_NOTIFICATION] }, providerMessageId: { type: string, maxLength: 256 } } }
+    WorkerHealth: { type: object, required: [id, instanceName, status, lastHeartbeatAt], properties: { id: { type: string, format: uuid }, instanceName: { type: string }, status: { enum: [HEALTHY, STALE, DRAINING] }, lastHeartbeatAt: { type: string, format: date-time } } }
+    JobPage: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Job' } }, nextCursor: { type: string, nullable: true } } }
+    Error: { type: object, required: [code, message, correlationId], properties: { code: { type: string, example: IDEMPOTENCY_KEY_REUSED }, message: { type: string }, correlationId: { type: string } } }

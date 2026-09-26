@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/contracts/webhook-completed.v1.json",
+  "title": "JobCompletionWebhookV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "eventType", "projectId", "jobId", "runId", "status", "occurredAt"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "eventId": {"type": "string", "format": "uuid"},
+    "eventType": {"enum": ["JOB_COMPLETED", "JOB_FAILED"]},
+    "projectId": {"type": "string", "format": "uuid"},
+    "jobId": {"type": "string", "format": "uuid"},
+    "runId": {"type": "string", "format": "uuid"},
+    "status": {"enum": ["COMPLETED", "FAILED"]},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "resultRef": {"type": "string"},
+    "errorCode": {"type": "string"}
+  }
+}

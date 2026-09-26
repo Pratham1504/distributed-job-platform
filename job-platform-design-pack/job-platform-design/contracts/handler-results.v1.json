@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/contracts/handler-results.v1.json",
+  "title": "HandlerResultsV1",
+  "oneOf": [
+    {"type": "object", "additionalProperties": false, "required": ["type", "artifactRef"], "properties": {"type": {"const": "GENERATE_REPORT"}, "artifactRef": {"type": "string", "maxLength": 512}}},
+    {"type": "object", "additionalProperties": false, "required": ["type", "providerMessageId"], "properties": {"type": {"const": "SEND_EMAIL"}, "providerMessageId": {"type": "string", "maxLength": 256}}},
+    {"type": "object", "additionalProperties": false, "required": ["type", "artifactRef", "recordCount"], "properties": {"type": {"const": "PROCESS_FILE"}, "artifactRef": {"type": "string", "maxLength": 512}, "recordCount": {"type": "integer", "minimum": 0}}},
+    {"type": "object", "additionalProperties": false, "required": ["type", "providerMessageId"], "properties": {"type": {"const": "SEND_NOTIFICATION"}, "providerMessageId": {"type": "string", "maxLength": 256}}}
+  ]
+}

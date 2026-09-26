@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/contracts/job-dead-letter.v1.json",
+  "title": "JobDeadLetterV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "eventType", "projectId", "jobId", "runId", "effectId", "dispatchVersion", "failedAt", "reasonCode", "correlationId"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "eventId": {"type": "string", "format": "uuid"},
+    "eventType": {"const": "JOB_DEAD_LETTERED"},
+    "projectId": {"type": "string", "format": "uuid"},
+    "jobId": {"type": "string", "format": "uuid"},
+    "runId": {"type": "string", "format": "uuid"},
+    "effectId": {"type": "string", "format": "uuid"},
+    "dispatchVersion": {"type": "integer", "minimum": 1},
+    "failedAt": {"type": "string", "format": "date-time"},
+    "reasonCode": {"type": "string", "maxLength": 64},
+    "correlationId": {"type": "string", "maxLength": 128}
+  }
+}

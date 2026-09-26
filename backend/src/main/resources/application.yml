@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: job-platform-api
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/job_platform}
+    username: ${DATABASE_USER:job_platform}
+    password: ${DATABASE_PASSWORD:change-me-before-use}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:job_platform}
+    password: ${RABBITMQ_PASSWORD:change-me-before-use}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+app:
+  security:
+    jwt-secret: ${JWT_SIGNING_KEY:development-only-secret-change-me-32}
+    access-token-ttl: PT15M
+    refresh-token-ttl: P7D
+  dispatch:
+    poll-interval-ms: 1000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

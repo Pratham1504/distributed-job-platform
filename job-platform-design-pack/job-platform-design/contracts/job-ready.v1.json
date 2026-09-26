@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/contracts/job-ready.v1.json",
+  "title": "JobReadyV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "eventType", "occurredAt", "jobId", "projectId", "runId", "effectId", "jobType", "dispatchVersion", "priority", "correlationId"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "eventId": {"type": "string", "format": "uuid"},
+    "eventType": {"const": "JOB_READY"},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "jobId": {"type": "string", "format": "uuid"},
+    "projectId": {"type": "string", "format": "uuid"},
+    "runId": {"type": "string", "format": "uuid"},
+    "effectId": {"type": "string", "format": "uuid", "description": "Stable across automatic retries and recovery of this run"},
+    "jobType": {"enum": ["GENERATE_REPORT", "SEND_EMAIL", "PROCESS_FILE", "SEND_NOTIFICATION"]},
+    "dispatchVersion": {"type": "integer", "minimum": 1},
+    "priority": {"enum": ["HIGH", "DEFAULT", "LOW"]},
+    "correlationId": {"type": "string", "maxLength": 128}
+  }
+}
