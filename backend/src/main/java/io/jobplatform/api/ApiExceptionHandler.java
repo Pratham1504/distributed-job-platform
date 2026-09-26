@@ -4,8 +4,11 @@ import io.jobplatform.jobs.JobConflictException;
 import io.jobplatform.jobs.JobNotFoundException;
 import io.jobplatform.jobs.JobValidationException;
 import io.jobplatform.identity.IdentityService;
+import io.jobplatform.projects.QuotaExceededException;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -34,6 +37,13 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     ApiError unauthorized(IdentityService.InvalidCredentialsException exception, HttpServletRequest request) {
         return error("INVALID_CREDENTIALS", "Invalid or expired credentials.", request);
+    }
+
+    @ExceptionHandler(QuotaExceededException.class)
+    ResponseEntity<ApiError> quotaExceeded(QuotaExceededException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()))
+                .body(error("QUOTA_EXCEEDED", exception.getMessage(), request));
     }
 
     private ApiError error(String code, String message, HttpServletRequest request) {

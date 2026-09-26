@@ -16,11 +16,20 @@ public class SecurityConfiguration {
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, BearerTokenFilter bearerTokenFilter) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, BearerTokenFilter bearerTokenFilter, ApiKeyFilter apiKeyFilter,
+                                            ApiAuthenticationEntryPoint authenticationEntryPoint,
+                                            ApiAccessDeniedHandler accessDeniedHandler) throws Exception {
         return http.csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth.requestMatchers("/api/v1/auth/**", "/actuator/health", "/actuator/prometheus").permitAll().anyRequest().authenticated())
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/v1/auth/**", "/actuator/health", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/api/v1/projects/*/jobs", "/api/v1/projects/*/jobs/**").authenticated()
+                        .requestMatchers("/api/v1/projects/**", "/api/v1/api-keys/**").hasRole("USER")
+                        .requestMatchers("/api/v1/operator/**").hasRole("OPERATOR")
+                        .anyRequest().authenticated())
+                .exceptionHandling(errors -> errors.authenticationEntryPoint(authenticationEntryPoint).accessDeniedHandler(accessDeniedHandler))
                 .addFilterBefore(bearerTokenFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(apiKeyFilter, BearerTokenFilter.class)
                 .build();
     }
 }

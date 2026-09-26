@@ -2,6 +2,7 @@ package io.jobplatform.projects;
 
 import io.jobplatform.jobs.JobNotFoundException;
 import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,7 +21,7 @@ public class ProjectService {
     @Transactional
     public ProjectResponse create(UUID userId, CreateProjectRequest request) {
         UUID id=UUID.randomUUID(); Instant now=Instant.now();
-        try { jdbc.update("insert into projects (id,owner_id,name,status,created_at) values (?,?,?,?,?)",id,userId,request.name(),"ACTIVE",now); }
+        try { jdbc.update("insert into projects (id,owner_id,name,status,created_at) values (?,?,?,?,?)",id,userId,request.name(),"ACTIVE",Timestamp.from(now)); }
         catch (DataIntegrityViolationException e) { throw new IllegalArgumentException("A project with this name already exists."); }
         return new ProjectResponse(id,request.name(),now);
     }

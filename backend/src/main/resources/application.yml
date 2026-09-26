@@ -16,6 +16,12 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:job_platform}
     password: ${RABBITMQ_PASSWORD:change-me-before-use}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -27,6 +33,12 @@ app:
     refresh-token-ttl: P7D
   dispatch:
     poll-interval-ms: 1000
+    enabled: ${DISPATCH_ENABLED:true}
+  quota:
+    submissions-per-minute: ${SUBMISSIONS_PER_MINUTE:60}
+    max-queued-per-project: ${MAX_QUEUED_PER_PROJECT:1000}
+  worker:
+    concurrency: ${WORKER_CONCURRENCY:4}
 
 management:
   endpoints:

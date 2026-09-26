@@ -8,6 +8,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.UUID;
@@ -33,8 +34,8 @@ public class IdentityService {
     public AuthSession register(RegisterRequest request) {
         UUID userId = UUID.randomUUID(); UUID projectId = UUID.randomUUID(); Instant now = Instant.now();
         try {
-            jdbc.update("insert into users (id,email,password_hash,role,created_at) values (?,?,?,?,?)", userId, request.email().toLowerCase(), passwords.encode(request.password()), "USER", now);
-            jdbc.update("insert into projects (id,owner_id,name,status,created_at) values (?,?,?,?,?)", projectId, userId, request.projectName(), "ACTIVE", now);
+            jdbc.update("insert into users (id,email,password_hash,role,created_at) values (?,?,?,?,?)", userId, request.email().toLowerCase(), passwords.encode(request.password()), "USER", Timestamp.from(now));
+            jdbc.update("insert into projects (id,owner_id,name,status,created_at) values (?,?,?,?,?)", projectId, userId, request.projectName(), "ACTIVE", Timestamp.from(now));
         } catch (DataIntegrityViolationException exception) { throw new JobConflictException("EMAIL_ALREADY_REGISTERED", "An account with this email already exists."); }
         return createSession(new ProductPrincipal(userId, request.email().toLowerCase(), "USER"), null);
     }
@@ -55,7 +56,7 @@ public class IdentityService {
     }
     private AuthSession createSession(ProductPrincipal principal, UUID familyId) {
         String raw = rawToken(); UUID tokenId = UUID.randomUUID(); UUID family = familyId == null ? UUID.randomUUID() : familyId; Instant now=Instant.now();
-        jdbc.update("insert into refresh_tokens (id,user_id,family_id,token_hash,issued_at,expires_at) values (?,?,?,?,?,?)", tokenId,principal.userId(),family,hash(raw),now,now.plus(refreshTtl));
+        jdbc.update("insert into refresh_tokens (id,user_id,family_id,token_hash,issued_at,expires_at) values (?,?,?,?,?,?)", tokenId,principal.userId(),family,hash(raw),Timestamp.from(now),Timestamp.from(now.plus(refreshTtl)));
         return new AuthSession(jwt.create(principal), raw, 900);
     }
     private String rawToken() { byte[] bytes=new byte[32]; random.nextBytes(bytes); return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes); }
