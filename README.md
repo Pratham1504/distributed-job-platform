@@ -47,11 +47,21 @@ export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 
 ## Run the complete local stack
 
-`docker-compose.full.yml` builds the API and dashboard and keeps PostgreSQL, RabbitMQ, Redis, and Prometheus private on the Compose network. Only the dashboard is published on `http://localhost:8088` by default.
+`docker-compose.full.yml` builds the API and dashboard and keeps PostgreSQL, RabbitMQ, Redis, and Prometheus private on the Compose network. The dashboard binds only to `http://localhost:8088` by default.
 
 ```sh
 docker-compose -f docker-compose.full.yml up --build
 ```
+
+### Public HTTPS demo deployment
+
+For a VM with a public DNS record, set `PUBLIC_HOSTNAME` and `CADDY_EMAIL` in `.env`, open only TCP ports 80 and 443 in the VM network security group, then start the public profile:
+
+```bash
+docker compose -f docker-compose.full.yml --profile public up -d --build
+```
+
+Caddy terminates TLS, redirects HTTP to HTTPS, and is the only internet-facing container. Keep the direct dashboard port (`8088`) bound to loopback and do not expose PostgreSQL, RabbitMQ, Redis, Prometheus, or Grafana publicly.
 
 Add `--profile monitoring` to start Prometheus and Grafana. They bind only to localhost at `http://localhost:9090` and `http://localhost:3000`; Grafana uses the credentials in `.env`. Before using this stack, replace the placeholder passwords and JWT key in `.env`.
 
