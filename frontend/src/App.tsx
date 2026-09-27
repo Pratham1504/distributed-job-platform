@@ -28,14 +28,26 @@ const jobDescriptions: Record<string, string> = {
   SEND_NOTIFICATION: "Delivers a local notification simulation in about 1–2 seconds."
 };
 
+function storedValue(key: string) {
+  try { return localStorage.getItem(key); }
+  catch { return null; }
+}
+function storeValue(key: string, value: string) {
+  try { localStorage.setItem(key, value); }
+  catch { /* Storage can be disabled by a browser privacy policy. */ }
+}
+function removeStoredValue(key: string) {
+  try { localStorage.removeItem(key); }
+  catch { /* Storage can be disabled by a browser privacy policy. */ }
+}
 const storedSession = (): Session | null => {
-  try { return JSON.parse(localStorage.getItem("job-platform-session") ?? "null") as Session | null; }
+  try { return JSON.parse(storedValue("job-platform-session") ?? "null") as Session | null; }
   catch { return null; }
 };
 const storedTheme = (): Theme => {
-  const saved = localStorage.getItem("job-platform-theme");
+  const saved = storedValue("job-platform-theme");
   if (saved === "light" || saved === "dark") return saved;
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 };
 function errorMessage(body: unknown, fallback: string) {
   return typeof body === "object" && body !== null && "message" in body && typeof body.message === "string" ? body.message : fallback;
@@ -61,6 +73,21 @@ function idempotencyKey() {
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const value = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
   return value.slice(0, 8) + "-" + value.slice(8, 12) + "-" + value.slice(12, 16) + "-" + value.slice(16, 20) + "-" + value.slice(20);
+}
+function copyWithFallback(value: string) {
+  const field = document.createElement("textarea");
+  field.value = value;
+  field.readOnly = true;
+  field.setAttribute("aria-hidden", "true");
+  field.style.position = "fixed";
+  field.style.opacity = "0";
+  field.style.pointerEvents = "none";
+  document.body.appendChild(field);
+  field.select();
+  field.setSelectionRange(0, value.length);
+  const copied = typeof document.execCommand === "function" && document.execCommand("copy");
+  field.remove();
+  return copied;
 }
 function elapsedTime(start?: string, end?: string) {
   if (!start || !end) return null;
@@ -142,6 +169,7 @@ export default function App() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
   const [keyPendingRevocation, setKeyPendingRevocation] = useState<ApiKey | null>(null);
+  const [copyFallback, setCopyFallback] = useState<{ label: string; value: string } | null>(null);
   const [keyName, setKeyName] = useState("");
   const [jobType, setJobType] = useState("GENERATE_REPORT");
   const [priority, setPriority] = useState("DEFAULT");
@@ -198,7 +226,7 @@ export default function App() {
   const endSession = useCallback(() => {
     sessionGeneration.current += 1;
     sessionRef.current = null;
-    localStorage.removeItem("job-platform-session");
+    removeStoredValue("job-platform-session");
     clearWorkspace();
     setError(null);
     setNotice(null);
@@ -210,7 +238,7 @@ export default function App() {
     sessionGeneration.current += 1;
     sessionRef.current = next;
     clearWorkspace();
-    localStorage.setItem("job-platform-session", JSON.stringify(next));
+    storeValue("job-platform-session", JSON.stringify(next));
     setSession(next);
   }, [clearWorkspace]);
 
@@ -285,7 +313,7 @@ export default function App() {
   }, [notice]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem("job-platform-theme", theme);
+    storeValue("job-platform-theme", theme);
   }, [theme]);
   useEffect(() => {
     if (!keyPendingRevocation) return;
@@ -553,8 +581,25 @@ export default function App() {
     finally { setRetryingJobId(null); setBusy(false); }
   }
   async function copy(value: string, label: string) {
-    try { await navigator.clipboard.writeText(value); setNotice(label + " copied to clipboard."); }
-    catch { setError("Could not copy the " + label.toLowerCase() + ". Select and copy it manually."); }
+    setError(null);
+    try {
+      if (window.isSecureContext && typeof navigator.clipboard?.writeText === "function") {
+        await navigator.clipboard.writeText(value);
+      } else if (!copyWithFallback(value)) {
+        setCopyFallback({ label, value });
+        return;
+      }
+      setCopyFallback(null);
+      setNotice(label + " copied to clipboard.");
+    } catch {
+      try {
+        if (copyWithFallback(value)) {
+          setCopyFallback(null);
+          setNotice(label + " copied to clipboard.");
+        }
+        else setCopyFallback({ label, value });
+      } catch { setCopyFallback({ label, value }); }
+    }
   }
   async function uploadSourceFile(file: File): Promise<FileAsset> {
     const uploadSession = sessionRef.current;
@@ -807,6 +852,7 @@ export default function App() {
         {jobs.length === 0 ? <div className="empty-state"><div aria-hidden="true">⌁</div><h3>No jobs yet</h3><p>Queue your first job above. Its full run and attempt history will appear here.</p></div> : filteredJobs.length === 0 ? <div className="empty-state filtered-empty"><div aria-hidden="true">⌕</div><h3>No matching jobs</h3><p>Try clearing a filter or choose a different project.</p>{hasActiveFilters && <button className="secondary" onClick={clearFilters}>Clear filters</button>}</div> : <div className="job-list">{filteredJobs.map(job => <article key={job.id} className="job-card"><div className="job-title"><div><strong>{jobLabel(job.jobType)}</strong><small>{display(job.createdAt)} · {job.priority} priority</small></div><span className={statusClass(job.status)}>{job.status.replace("_", " ")}</span></div><div className="job-facts"><span><b>Schedule</b>{job.scheduledAt ? display(job.scheduledAt) : "Now"}</span><span><b>Attempts</b>{job.runs.reduce((sum, run) => sum + run.executions.length, 0)}</span><span><b>Finished</b>{display(job.completedAt)}</span><span><b>Elapsed</b>{elapsedTime(job.scheduledAt ?? job.createdAt, job.completedAt) ?? "—"}</span></div><div className="job-actions"><div className="job-primary-actions"><button className="secondary" onClick={() => navigate("/jobs/" + job.id)}>View job</button>{["PENDING", "QUEUED"].includes(job.status) && <button className="danger" onClick={() => void cancel(job)} disabled={busy}>Cancel</button>}{job.status === "FAILED" && <button className="secondary" onClick={() => void retry(job)} disabled={busy}>Retry</button>}</div></div><details className="job-history"><summary>Execution history <span>{job.runs.length} {job.runs.length === 1 ? "run" : "runs"}</span></summary>{job.runs.map(run => <div className="run" key={run.id}><div className="run-summary"><strong>Run {run.runNumber}</strong>{run.status !== job.status && <span className={statusClass(run.status)}>{run.status}</span>}<span>{run.status === "COMPLETED" ? "Finished after " + run.attemptCount + " " + (run.attemptCount === 1 ? "attempt" : "attempts") : run.attemptCount + "/" + run.maxAttempts + " attempts"}</span></div>{run.executions.length === 0 ? <p className="muted">Waiting for a worker to claim this run.</p> : run.executions.map(attempt => { const isFileResult = attempt.result?.type === "PROCESS_FILE"; const hasArtifact = Boolean(artifactReference(attempt)); const hasResult = Boolean(attempt.result || hasArtifact); return <div className="attempt" key={attempt.id}><div><strong>Attempt {attempt.attemptNumber}</strong>{attempt.status !== "COMPLETED" && <span className={statusClass(attempt.status)}>{attempt.status}</span>}</div><span>{attempt.status === "COMPLETED" ? "Finished successfully" : "Finished with " + attempt.status.toLowerCase().replace("_", " ")}</span><time dateTime={attempt.finishedAt ?? attempt.startedAt}>{display(attempt.finishedAt ?? attempt.startedAt)}</time>{attempt.errorCode && <span className="error">{attempt.errorCode}</span>}{isFileResult && <div className="attempt-result-summary"><span>{numberResult(attempt.result, "validRows")} valid · {numberResult(attempt.result, "rejectedRows")} rejected · {numberResult(attempt.result, "duplicatesRemoved")} duplicates removed</span><button className="text-button" onClick={() => navigate("/jobs/" + job.id + "/result")}>Review CSV result</button></div>}{hasResult && !isFileResult && <div className="attempt-result-summary"><span>{hasArtifact ? "A downloadable result is available." : "This execution has a recorded outcome."}</span><button className="text-button" onClick={() => navigate("/jobs/" + job.id + "/result")}>View result</button></div>}</div>; })}</div>)}</details></article>)}</div>}
       </section>
     </>}
+    {copyFallback && <div className="dialog-backdrop" role="presentation" onMouseDown={() => setCopyFallback(null)}><section className="confirm-dialog surface copy-dialog" role="dialog" aria-modal="true" aria-labelledby="copy-title" aria-describedby="copy-description" onMouseDown={event => event.stopPropagation()}><p className="eyebrow">Manual copy</p><h2 id="copy-title">Copy {copyFallback.label}</h2><p id="copy-description">Your browser denied direct clipboard access. Select the value below, copy it, then choose Done.</p><textarea className="copy-fallback-value" readOnly autoFocus value={copyFallback.value} aria-label={copyFallback.label} onFocus={event => event.currentTarget.select()} onClick={event => event.currentTarget.select()} /><div className="dialog-actions"><button className="secondary" onClick={() => void copy(copyFallback.value, copyFallback.label)}>Try again</button><button onClick={() => setCopyFallback(null)}>Done</button></div></section></div>}
     {keyPendingRevocation && <div className="dialog-backdrop" role="presentation" onMouseDown={() => !busy && setKeyPendingRevocation(null)}><section className="confirm-dialog surface" role="alertdialog" aria-modal="true" aria-labelledby="revoke-title" aria-describedby="revoke-description" onMouseDown={event => event.stopPropagation()}><p className="eyebrow">Irreversible action</p><h2 id="revoke-title">Revoke “{keyPendingRevocation.name}”?</h2><p id="revoke-description">This key will immediately lose access to this project. Existing integrations using it will stop working.</p><div className="dialog-actions"><button className="secondary" onClick={() => setKeyPendingRevocation(null)} disabled={busy}>Keep key</button><button className="danger solid-danger" onClick={() => void revokeKey()} disabled={busy}>{busy ? "Revoking…" : "Revoke key"}</button></div></section></div>}
   </main>;
 }

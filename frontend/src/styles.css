@@ -57,9 +57,8 @@
 }
 
 * { box-sizing: border-box; }
-body, body * { user-select: none !important; -webkit-user-select: none !important; }
 body { min-width: 320px; margin: 0; overflow-x: hidden; color: var(--text); background: var(--bg); }
-input, textarea { user-select: text !important; -webkit-user-select: text !important; }
+input, textarea, code, pre { user-select: text; -webkit-user-select: text; }
 button, input, select, textarea { font: inherit; }
 button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; cursor: pointer; border: 1px solid var(--accent-strong); border-radius: 8px; padding: 9px 14px; color: var(--on-accent); background: var(--accent-strong); font-weight: 740; user-select: none !important; -webkit-user-select: none !important; -webkit-tap-highlight-color: transparent; transition: background .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
 button *, button::selection, button *::selection { user-select: none !important; -webkit-user-select: none !important; color: inherit; background: transparent; }
@@ -247,6 +246,8 @@ summary { cursor: pointer; color: var(--accent); font-size: .86rem; font-weight:
 .confirm-dialog { width: min(100%, 430px); border-radius: 16px; padding: 24px; box-shadow: 0 24px 70px rgb(0 0 0 / .38); animation: enter .2s ease-out both; }
 .confirm-dialog h2 { margin-bottom: 10px; font-size: 1.32rem; }
 .confirm-dialog > p:not(.eyebrow) { margin-bottom: 22px; color: var(--muted); line-height: 1.55; }
+.copy-dialog { width: min(100%, 560px); }
+.copy-fallback-value { min-height: 106px; margin-bottom: 18px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .84rem; overflow-wrap: anywhere; }
 .dialog-actions { display: flex; justify-content: end; gap: 10px; }
 .solid-danger { color: #fff; background: #bd425e; border-color: #bd425e; }
 .solid-danger:hover:not(:disabled) { background: #ce5570; }
