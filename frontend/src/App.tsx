@@ -49,6 +49,19 @@ function nextScheduleMinimum() {
 }
 function iso(value: string) { return value ? new Date(value).toISOString() : undefined; }
 function display(value?: string) { return value ? new Date(value).toLocaleString() : "—"; }
+function idempotencyKey() {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+
+  // Web Crypto is unavailable in some browsers when the app is served over plain HTTP.
+  // The key still only needs to be unique for a short-lived submission or retry request.
+  const bytes = new Uint8Array(16);
+  if (typeof globalThis.crypto?.getRandomValues === "function") globalThis.crypto.getRandomValues(bytes);
+  else for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const value = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+  return value.slice(0, 8) + "-" + value.slice(8, 12) + "-" + value.slice(12, 16) + "-" + value.slice(16, 20) + "-" + value.slice(20);
+}
 function elapsedTime(start?: string, end?: string) {
   if (!start || !end) return null;
   const milliseconds = new Date(end).getTime() - new Date(start).getTime();
@@ -490,7 +503,7 @@ export default function App() {
       }
       const accepted = await request<{ jobId: string }>("/api/v1/projects/" + projectId + "/jobs", {
         method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
+        headers: { "Idempotency-Key": idempotencyKey() },
         body: JSON.stringify({ jobType, payload: requestPayload, priority, ...(scheduleLater ? { scheduledAt: iso(scheduledAt) } : {}) })
       });
       setScheduledAt(""); setScheduleLater(false); setSourceFile(null);
@@ -534,7 +547,7 @@ export default function App() {
     }
     setBusy(true); setRetryingJobId(job.id); setError(null);
     try {
-      await request<{ runId: string }>("/api/v1/projects/" + projectId + "/jobs/" + job.id + "/retry", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() } });
+      await request<{ runId: string }>("/api/v1/projects/" + projectId + "/jobs/" + job.id + "/retry", { method: "POST", headers: { "Idempotency-Key": idempotencyKey() } });
       await loadJobs(); setNotice("A new retry run was accepted.");
     } catch (cause) { setError(errorMessage(cause, "Could not start a manual retry.")); }
     finally { setRetryingJobId(null); setBusy(false); }
