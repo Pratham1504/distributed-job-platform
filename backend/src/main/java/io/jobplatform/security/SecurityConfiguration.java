@@ -24,7 +24,9 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**", "/actuator/health", "/actuator/prometheus").permitAll()
                         .requestMatchers("/api/v1/projects/*/jobs", "/api/v1/projects/*/jobs/**").authenticated()
-                        .requestMatchers("/api/v1/projects/**", "/api/v1/api-keys/**").hasRole("USER")
+                        .requestMatchers("/api/v1/projects/*/files/**").hasAnyRole("USER", "OPERATOR")
+                        .requestMatchers("/api/v1/projects/*/artifacts/**").authenticated()
+                        .requestMatchers("/api/v1/projects/**", "/api/v1/api-keys/**").hasAnyRole("USER", "OPERATOR")
                         .requestMatchers("/api/v1/operator/**").hasRole("OPERATOR")
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(authenticationEntryPoint).accessDeniedHandler(accessDeniedHandler))

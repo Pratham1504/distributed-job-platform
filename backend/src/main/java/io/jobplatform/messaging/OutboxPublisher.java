@@ -2,6 +2,7 @@ package io.jobplatform.messaging;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.jobplatform.observability.PlatformMetrics;
 import java.time.Instant;
 import java.sql.Timestamp;
 import java.util.UUID;
@@ -16,17 +17,22 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class OutboxPublisher {
+    private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
+
     private final JdbcTemplate jdbc;
     private final RabbitTemplate rabbit;
     private final ObjectMapper json;
     private final boolean enabled;
+    private final PlatformMetrics metrics;
 
     public OutboxPublisher(JdbcTemplate jdbc, RabbitTemplate rabbit, ObjectMapper json,
-                           @Value("${app.dispatch.enabled:true}") boolean enabled) {
-        this.jdbc = jdbc; this.rabbit = rabbit; this.json = json; this.enabled = enabled;
+                           @Value("${app.dispatch.enabled:true}") boolean enabled, PlatformMetrics metrics) {
+        this.jdbc = jdbc; this.rabbit = rabbit; this.json = json; this.enabled = enabled; this.metrics = metrics;
     }
 
     @Scheduled(fixedDelayString = "${app.dispatch.poll-interval-ms:1000}")
@@ -58,10 +64,21 @@ public class OutboxPublisher {
             if (!confirm.isAck()) throw new IllegalStateException("RabbitMQ rejected outbox event " + event.id());
             jdbc.update("update outbox_events set published_at=?, publish_attempts=publish_attempts+1, locked_until=null, last_error=null where id=?",
                     Timestamp.from(Instant.now()), event.id());
+            metrics.outboxPublished(event.type());
+            log.debug("event=outbox_event_published eventId={} type={} routingKey={}", event.id(), event.type(), routingKey);
         } catch (Exception exception) {
             jdbc.update("update outbox_events set publish_attempts=publish_attempts+1, last_error=?, locked_until=? where id=?",
-                    exception.getMessage(), Timestamp.from(Instant.now().plusSeconds(5)), event.id());
+                    safeError(exception), Timestamp.from(Instant.now().plusSeconds(5)), event.id());
+            metrics.outboxFailed(event.type());
+            log.warn("event=outbox_event_publish_failed eventId={} type={} error={}", event.id(), event.type(),
+                    exception.getClass().getSimpleName());
         }
+    }
+
+    private String safeError(Exception exception) {
+        String message = exception.getMessage();
+        String value = exception.getClass().getSimpleName() + (message == null ? "" : ": " + message);
+        return value.substring(0, Math.min(value.length(), 512));
     }
 
     private record OutboxEvent(UUID id, String type, String payload) { }

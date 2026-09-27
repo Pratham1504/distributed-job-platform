@@ -18,10 +18,17 @@ spring:
     password: ${RABBITMQ_PASSWORD:change-me-before-use}
     publisher-confirm-type: correlated
     publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  servlet:
+    multipart:
+      max-file-size: ${UPLOAD_MAX_SIZE:10MB}
+      max-request-size: ${UPLOAD_MAX_SIZE:10MB}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -31,17 +38,61 @@ app:
     jwt-secret: ${JWT_SIGNING_KEY:development-only-secret-change-me-32}
     access-token-ttl: PT15M
     refresh-token-ttl: P7D
+    # Comma-separated deployment-managed accounts. Leave blank for an all-user local setup.
+    operator-emails: ${OPERATOR_EMAILS:}
+    login-rate-limit:
+      per-email: ${LOGIN_ATTEMPTS_PER_EMAIL:10}
+      per-address: ${LOGIN_ATTEMPTS_PER_ADDRESS:30}
+      window: ${LOGIN_RATE_LIMIT_WINDOW:PT1M}
   dispatch:
     poll-interval-ms: 1000
     enabled: ${DISPATCH_ENABLED:true}
+    reconciliation-interval-ms: ${DISPATCH_RECONCILIATION_INTERVAL_MS:30000}
+    reconciliation-age: ${DISPATCH_RECONCILIATION_AGE:PT60S}
   quota:
     submissions-per-minute: ${SUBMISSIONS_PER_MINUTE:60}
     max-queued-per-project: ${MAX_QUEUED_PER_PROJECT:1000}
+    max-waiting-jobs: ${MAX_WAITING_JOBS:5000}
+    max-local-storage-used-percent: ${MAX_LOCAL_STORAGE_USED_PERCENT:80}
   worker:
-    concurrency: ${WORKER_CONCURRENCY:4}
+    maximum-concurrent-executions: ${WORKER_CONCURRENCY:4}
+    maximum-concurrent-executions-per-project: ${WORKER_PROJECT_CONCURRENCY:2}
+    high-concurrency: ${WORKER_HIGH_CONCURRENCY:5}
+    default-concurrency: ${WORKER_DEFAULT_CONCURRENCY:3}
+    low-concurrency: ${WORKER_LOW_CONCURRENCY:1}
+    lease-duration: ${WORKER_LEASE_DURATION:PT30S}
+    lease-renewal-interval: ${WORKER_LEASE_RENEWAL_INTERVAL:PT10S}
+    maximum-execution-duration: ${WORKER_MAXIMUM_EXECUTION_DURATION:PT10M}
+    # Local stand-ins remain observable while real report/email/notification providers are deferred.
+    placeholder-handler-minimum-duration: ${WORKER_PLACEHOLDER_HANDLER_MINIMUM_DURATION:PT1S}
+    placeholder-handler-maximum-duration: ${WORKER_PLACEHOLDER_HANDLER_MAXIMUM_DURATION:PT2S}
+  artifacts:
+    local-root: ${ARTIFACTS_LOCAL_ROOT:./var/artifacts}
+  file-assets:
+    local-root: ${FILE_ASSETS_LOCAL_ROOT:./var/file-assets}
+    upload-maximum-bytes: ${UPLOAD_MAX_SIZE_BYTES:10485760}
+    output-maximum-bytes: ${FILE_ASSET_OUTPUT_MAX_SIZE_BYTES:52428800}
+  retention:
+    jobs: ${JOB_RETENTION:PT2160H}
+    attempts: ${ATTEMPT_RETENTION:PT720H}
+    published-outbox: ${OUTBOX_RETENTION:PT336H}
+    audit: ${AUDIT_RETENTION:PT4320H}
+    artifacts: ${ARTIFACT_RETENTION:PT720H}
+    cleanup-cron: ${RETENTION_CLEANUP_CRON:0 15 3 * * *}
 
 management:
+  prometheus:
+    metrics:
+      export:
+        enabled: true
   endpoints:
     web:
       exposure:
         include: health,info,prometheus
+
+logging:
+  level:
+    io.jobplatform: ${APP_LOG_LEVEL:INFO}
+  structured:
+    format:
+      console: ${APP_LOG_FORMAT:logstash}

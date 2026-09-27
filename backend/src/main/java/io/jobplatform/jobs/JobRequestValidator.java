@@ -83,12 +83,14 @@ public class JobRequestValidator {
     }
 
     private void validateFile(JsonNode payload) {
-        exactFields(payload, Set.of("sourceObjectRef", "operation"));
-        String objectRef = text(payload, "sourceObjectRef");
-        if (objectRef.isBlank() || objectRef.length() > 512) {
-            throw new JobValidationException("sourceObjectRef must be between 1 and 512 characters.");
+        exactFields(payload, Set.of("sourceAssetId", "operation"));
+        String sourceAssetId = text(payload, "sourceAssetId");
+        try {
+            java.util.UUID.fromString(sourceAssetId);
+        } catch (IllegalArgumentException exception) {
+            throw new JobValidationException("sourceAssetId must be a UUID.");
         }
-        oneOf(text(payload, "operation"), Set.of("CSV_VALIDATE", "JSON_NORMALIZE"), "operation");
+        oneOf(text(payload, "operation"), Set.of("CSV_VALIDATE", "CSV_NORMALIZE"), "operation");
     }
 
     private void validateNotification(JsonNode payload) {

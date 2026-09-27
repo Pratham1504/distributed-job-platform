@@ -1,0 +1,10 @@
+[
+  {
+    "projectId": "replace-with-project-id-one",
+    "apiKey": "replace-with-project-api-key-one"
+  },
+  {
+    "projectId": "replace-with-project-id-two",
+    "apiKey": "replace-with-project-api-key-two"
+  }
+]

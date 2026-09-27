@@ -5,6 +5,9 @@
 
 # Java
 backend/target/
+backend/var/
+backups/
+scripts/load-targets.json
 backend/.mvn/wrapper/maven-wrapper.jar
 *.class
 .tools/
@@ -19,3 +22,7 @@ frontend/dist/
 *.iml
 Thumbs.db
 .DS_Store
+
+# Large local CSV fixtures are reproducible with scripts/generate-large-csv-fixtures.mjs
+sample-data/near-upload-limit.csv
+sample-data/over-upload-limit.csv

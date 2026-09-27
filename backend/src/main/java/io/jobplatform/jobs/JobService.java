@@ -16,33 +16,46 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import io.jobplatform.assets.FileAssetService;
 import io.jobplatform.projects.ProjectService;
 import io.jobplatform.projects.ProjectQuotaService;
+import io.jobplatform.observability.PlatformMetrics;
 import io.jobplatform.security.ProductPrincipal;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class JobService {
+    private static final Logger log = LoggerFactory.getLogger(JobService.class);
+
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final JobRequestValidator requestValidator;
     private final ProjectService projects;
     private final ProjectQuotaService quotas;
+    private final FileAssetService fileAssets;
     private final JobCursorCodec cursors;
+    private final PlatformMetrics metrics;
 
     public JobService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, JobRequestValidator requestValidator,
-                      ProjectService projects, ProjectQuotaService quotas, JobCursorCodec cursors) {
+                      ProjectService projects, ProjectQuotaService quotas, FileAssetService fileAssets, JobCursorCodec cursors, PlatformMetrics metrics) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.requestValidator = requestValidator;
         this.projects = projects;
         this.quotas = quotas;
+        this.fileAssets = fileAssets;
         this.cursors = cursors;
+        this.metrics = metrics;
     }
 
     @Transactional
     public JobAcceptedResponse submit(UUID projectId, ProductPrincipal principal, String idempotencyKey, CreateJobRequest request) {
         requestValidator.validate(idempotencyKey, request);
         requireJobAccess(projectId, principal);
+        if (request.jobType() == JobType.PROCESS_FILE) {
+            fileAssets.requireProcessableSource(projectId, UUID.fromString(request.payload().path("sourceAssetId").asText()));
+        }
 
         String payload = json(request.payload());
         String payloadHash = sha256(payload);
@@ -51,9 +64,11 @@ public class JobService {
             if (!existing.payloadHash().equals(payloadHash)) {
                 throw new JobConflictException("IDEMPOTENCY_KEY_REUSED", "The idempotency key was used with a different request.");
             }
+            metrics.submissionReplayed();
+            log.debug("event=job_submission_replayed projectId={} jobId={}", projectId, existing.jobId());
             return new JobAcceptedResponse(existing.jobId(), existing.runId(), existing.status(), statusUrl(projectId, existing.jobId()));
         }
-        quotas.reserveSubmission(projectId);
+        quotas.reserveSubmission(projectId, request.priority());
 
         Instant now = Instant.now();
         JobStatus status = request.scheduledAt() == null ? JobStatus.QUEUED : JobStatus.PENDING;
@@ -84,10 +99,15 @@ public class JobService {
         } catch (DataIntegrityViolationException duplicate) {
             ExistingJob racedJob = findByIdempotencyKey(projectId, idempotencyKey);
             if (racedJob != null && racedJob.payloadHash().equals(payloadHash)) {
+                metrics.submissionReplayed();
+                log.debug("event=job_submission_replayed projectId={} jobId={} reason=concurrent_request", projectId, racedJob.jobId());
                 return new JobAcceptedResponse(racedJob.jobId(), racedJob.runId(), racedJob.status(), statusUrl(projectId, racedJob.jobId()));
             }
             throw duplicate;
         }
+        metrics.jobAccepted(request.jobType(), request.priority(), request.scheduledAt() != null);
+        log.info("event=job_accepted projectId={} jobId={} runId={} type={} priority={} scheduled={}",
+                projectId, jobId, runId, request.jobType(), request.priority(), request.scheduledAt() != null);
         return new JobAcceptedResponse(jobId, runId, status, statusUrl(projectId, jobId));
     }
 
@@ -158,6 +178,9 @@ public class JobService {
         jdbcTemplate.update("update job_runs set status='CANCELLED',completed_at=? where job_id=? and status in ('PENDING','QUEUED','RETRY_WAIT')",
                 Timestamp.from(now), jobId);
         insertAuditEvent(projectId, principal.isApiKey() ? "API_KEY" : "USER", principal.isApiKey() ? principal.apiClientId() : principal.userId(), "JOB_CANCELLED", jobId, "{}", now);
+        metrics.jobCancelled();
+        log.info("event=job_cancelled projectId={} jobId={} actorType={}", projectId, jobId,
+                principal.isApiKey() ? "API_KEY" : "USER");
         return get(projectId, principal, jobId);
     }
 
@@ -181,6 +204,8 @@ public class JobService {
                 """, rs -> rs.next() ? new ExistingJob(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
                 rs.getString(3), JobStatus.valueOf(rs.getString(4))) : null, jobId, idempotencyKey);
         if (existingRetry != null) {
+            metrics.submissionReplayed();
+            log.debug("event=manual_retry_replayed projectId={} jobId={} runId={}", projectId, jobId, existingRetry.runId());
             return new JobAcceptedResponse(existingRetry.jobId(), existingRetry.runId(), existingRetry.status(), statusUrl(projectId, existingRetry.jobId()));
         }
 
@@ -205,6 +230,8 @@ public class JobService {
         insertJobReadyEvent(jobId, projectId, runId, effectId, 1, source.jobType(), source.priority(), now);
         insertAuditEvent(projectId, principal.isApiKey() ? "API_KEY" : "USER", principal.isApiKey() ? principal.apiClientId() : principal.userId(), "JOB_MANUAL_RETRY_REQUESTED", jobId,
                 "{\"runId\":\"" + runId + "\"}", now);
+        metrics.manualRetry();
+        log.info("event=job_manual_retry_accepted projectId={} jobId={} runId={} priority={}", projectId, jobId, runId, source.priority());
         return new JobAcceptedResponse(jobId, runId, JobStatus.QUEUED, statusUrl(projectId, jobId));
     }
 
@@ -302,13 +329,7 @@ public class JobService {
     }
 
     private void requireJobAccess(UUID projectId, ProductPrincipal principal) {
-        if (principal.isApiKey()) {
-            if (!projectId.equals(principal.apiKeyProjectId())) {
-                throw new JobNotFoundException("Project not found.");
-            }
-            return;
-        }
-        projects.requireOwnership(projectId, principal.userId());
+        projects.requireAccess(projectId, principal);
     }
 
     private Timestamp timestamp(Instant value) { return value == null ? null : Timestamp.from(value); }

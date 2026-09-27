@@ -1,0 +1,24 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "panels": [
+    { "id": 1, "title": "API request rate", "type": "timeseries", "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count{uri=~\"/api/.*\"}[5m]))", "refId": "A" }], "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 } },
+    { "id": 2, "title": "API p95 latency", "type": "timeseries", "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{uri=~\"/api/.*\"}[5m])))", "refId": "A" }], "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 } },
+    { "id": 3, "title": "Queued jobs", "type": "stat", "targets": [{ "expr": "job_platform_queued_jobs", "refId": "A" }], "gridPos": { "h": 6, "w": 6, "x": 0, "y": 8 } },
+    { "id": 4, "title": "Running executions", "type": "stat", "targets": [{ "expr": "job_platform_running_executions", "refId": "A" }], "gridPos": { "h": 6, "w": 6, "x": 6, "y": 8 } },
+    { "id": 5, "title": "Unpublished outbox events", "type": "stat", "targets": [{ "expr": "job_platform_unpublished_outbox_events", "refId": "A" }], "gridPos": { "h": 6, "w": 6, "x": 12, "y": 8 } },
+    { "id": 6, "title": "Healthy workers", "type": "stat", "targets": [{ "expr": "job_platform_healthy_workers", "refId": "A" }], "gridPos": { "h": 6, "w": 6, "x": 18, "y": 8 } },
+    { "id": 7, "title": "RabbitMQ ready messages by queue", "type": "timeseries", "targets": [{ "expr": "sum by (queue) (rabbitmq_detailed_queue_messages_ready{queue=~\"jobs.*\"})", "refId": "A" }], "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 } },
+    { "id": 8, "title": "Job outcomes", "type": "timeseries", "targets": [{ "expr": "sum(rate(job_platform_job_completions_total[5m]))", "legendFormat": "completed", "refId": "A" }, { "expr": "sum(rate(job_platform_job_failures_total[5m]))", "legendFormat": "failed", "refId": "B" }, { "expr": "sum(rate(job_platform_job_retry_schedules_total[5m]))", "legendFormat": "retries", "refId": "C" }], "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 } },
+    { "id": 9, "title": "Global waiting jobs", "type": "stat", "targets": [{ "expr": "job_platform_global_waiting_jobs", "refId": "A" }], "gridPos": { "h": 6, "w": 6, "x": 0, "y": 22 } },
+    { "id": 10, "title": "Local storage used", "type": "gauge", "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 80 }] } } }, "targets": [{ "expr": "job_platform_local_storage_used_percent", "refId": "A" }], "gridPos": { "h": 6, "w": 6, "x": 6, "y": 22 } },
+    { "id": 11, "title": "Admission rejections", "type": "timeseries", "targets": [{ "expr": "sum by (reason) (increase(job_platform_admission_rejections_total[5m]))", "refId": "A" }], "gridPos": { "h": 6, "w": 12, "x": 12, "y": 22 } }
+  ],
+  "schemaVersion": 41,
+  "tags": ["job-platform"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "Job Platform Operations",
+  "uid": "job-platform-operations",
+  "version": 1
+}

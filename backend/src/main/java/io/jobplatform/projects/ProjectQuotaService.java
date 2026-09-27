@@ -3,6 +3,7 @@ package io.jobplatform.projects;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import io.jobplatform.jobs.JobPriority;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -23,17 +24,20 @@ public class ProjectQuotaService {
     private final JdbcTemplate jdbc;
     private final int perMinute;
     private final int maxQueued;
+    private final GlobalAdmissionControl admission;
 
     public ProjectQuotaService(StringRedisTemplate redis, JdbcTemplate jdbc,
                                @Value("${app.quota.submissions-per-minute:60}") int perMinute,
-                               @Value("${app.quota.max-queued-per-project:1000}") int maxQueued) {
+                               @Value("${app.quota.max-queued-per-project:1000}") int maxQueued,
+                               GlobalAdmissionControl admission) {
         this.redis = redis;
         this.jdbc = jdbc;
         this.perMinute = perMinute;
         this.maxQueued = maxQueued;
+        this.admission = admission;
     }
 
-    public void reserveSubmission(UUID projectId) {
+    public void reserveSubmission(UUID projectId, JobPriority priority) {
         String key = "job-platform:quota:project:" + projectId + ":submissions";
         try {
             Long count = redis.execute(INCREMENT_WINDOW, List.of(key), Long.toString(Duration.ofMinutes(1).toSeconds()));
@@ -52,5 +56,6 @@ public class ProjectQuotaService {
         if (queued != null && queued >= maxQueued) {
             throw new QuotaExceededException("Project queued-job limit exceeded.", 60);
         }
+        admission.requireAdmission(priority);
     }
 }

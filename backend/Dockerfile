@@ -7,6 +7,7 @@ RUN mvn -B -DskipTests package
 
 FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S jobplatform && adduser -S jobplatform -G jobplatform
+RUN mkdir -p /var/lib/job-platform/artifacts /var/lib/job-platform/file-assets && chown -R jobplatform:jobplatform /var/lib/job-platform
 WORKDIR /app
 COPY --from=build /workspace/target/job-platform-api-*.jar app.jar
 USER jobplatform

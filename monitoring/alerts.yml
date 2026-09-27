@@ -1,0 +1,45 @@
+groups:
+  - name: job-platform
+    rules:
+      - alert: JobPlatformOutboxBacklog
+        expr: job_platform_oldest_unpublished_outbox_seconds > 60
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: Durable events have not reached RabbitMQ for over a minute.
+      - alert: JobPlatformNoHealthyWorkers
+        expr: job_platform_healthy_workers < 1
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: No Job Platform worker has reported a recent heartbeat.
+      - alert: JobPlatformLeaseExpirations
+        expr: increase(job_platform_lease_expirations_total[5m]) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: One or more worker leases expired in the last five minutes.
+      - alert: JobPlatformDlqGrowth
+        expr: increase(rabbitmq_detailed_queue_messages_published_total{queue="jobs.dead-letter"}[5m]) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: The job dead-letter queue received new messages.
+      - alert: JobPlatformLowPriorityAdmissionShed
+        expr: increase(job_platform_admission_rejections_total[5m]) > 0
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: Low-priority work is being shed to protect the platform queue or local storage.
+      - alert: JobPlatformGlobalQueueBusy
+        expr: job_platform_global_waiting_jobs >= 5000
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: The global waiting-job limit is reached; new low-priority jobs are paused.
+      - alert: JobPlatformLocalStoragePressure
+        expr: job_platform_local_storage_used_percent >= 80
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: The local source/output volume is above its safe capacity threshold.

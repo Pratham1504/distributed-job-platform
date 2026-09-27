@@ -1,0 +1,4 @@
+order_id,email,amount
+ORD-2001,ada@example.com,45.00
+ORD-2002,,19.99
+ORD-2003,grace@example.com,22.00,unexpected-column

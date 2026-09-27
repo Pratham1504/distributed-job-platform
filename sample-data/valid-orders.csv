@@ -1,0 +1,4 @@
+order_id,customer_name,order_date,amount
+ORD-1001,Ada Lovelace,2026-09-01,125.50
+ORD-1002,Grace Hopper,2026-09-02,89.00
+ORD-1003,Linus Torvalds,2026-09-03,245.75

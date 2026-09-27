@@ -7,11 +7,15 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
 public class CorrelationIdFilter extends OncePerRequestFilter {
+    private static final Logger log = LoggerFactory.getLogger(CorrelationIdFilter.class);
     public static final String HEADER = "X-Correlation-Id";
     public static final String ATTRIBUTE = CorrelationIdFilter.class.getName() + ".value";
     private static final Pattern ACCEPTED_VALUE = Pattern.compile("[A-Za-z0-9._-]{1,128}");
@@ -24,7 +28,17 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
                 ? candidate : UUID.randomUUID().toString();
         request.setAttribute(ATTRIBUTE, correlationId);
         response.setHeader(HEADER, correlationId);
-        filterChain.doFilter(request, response);
+        long startedAt = System.nanoTime();
+        MDC.put("correlationId", correlationId);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            long durationMillis = (System.nanoTime() - startedAt) / 1_000_000;
+            // Deliberately omits request bodies, query strings, and authentication headers.
+            log.debug("event=http_request method={} path={} status={} durationMs={}", request.getMethod(),
+                    request.getRequestURI(), response.getStatus(), durationMillis);
+            MDC.remove("correlationId");
+        }
     }
 
     public static String value(HttpServletRequest request) {

@@ -18,9 +18,12 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class ApiKeyService {
+    private static final Logger log = LoggerFactory.getLogger(ApiKeyService.class);
     private static final String KEY_PREFIX = "jpk_";
     private static final int PREFIX_LENGTH = 16;
 
@@ -55,6 +58,7 @@ public class ApiKeyService {
             throw new JobConflictException("API_KEY_NAME_EXISTS", "An API key with this name already exists in the project.");
         }
         audit(projectId, "USER", userId, "API_KEY_CREATED", keyId, "{}");
+        log.info("event=api_key_created projectId={} keyId={}", projectId, keyId);
         return new CreatedApiKey(keyId, request.name(), prefix, "ACTIVE", now, null, plaintext);
     }
 
@@ -81,6 +85,7 @@ public class ApiKeyService {
         if (!"REVOKED".equals(client.status())) {
             jdbc.update("update api_clients set status='REVOKED', revoked_at=? where id=?", Timestamp.from(Instant.now()), keyId);
             audit(client.projectId(), "USER", userId, "API_KEY_REVOKED", keyId, "{}");
+            log.info("event=api_key_revoked projectId={} keyId={}", client.projectId(), keyId);
         }
     }
 
@@ -100,6 +105,7 @@ public class ApiKeyService {
         Instant now = Instant.now();
         jdbc.update("update api_clients set last_used_at=? where id=?", Timestamp.from(now), client.id());
         audit(client.projectId(), "API_KEY", client.id(), "API_KEY_USED", client.id(), "{}");
+        log.debug("event=api_key_authenticated projectId={} keyId={}", client.projectId(), client.id());
         return ProductPrincipal.apiKey(client.projectId(), client.id());
     }
 

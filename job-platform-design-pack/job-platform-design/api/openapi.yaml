@@ -82,6 +82,38 @@ paths:
       summary: Start a new manual retry run for a final failed job
       parameters: [ { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/JobId' }, { $ref: '#/components/parameters/IdempotencyKey' } ]
       responses: { '202': { description: New retry run accepted, content: { application/json: { schema: { $ref: '#/components/schemas/JobAccepted' } } } }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } }
+  /projects/{projectId}/artifacts/{artifactId}:
+    get:
+      security: [ { bearerAuth: [] }, { apiKeyAuth: [] } ]
+      summary: Download one generated artifact owned by the project
+      parameters: [ { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/ArtifactId' } ]
+      responses: { '200': { description: JSON artifact, content: { application/json: { schema: { type: object } } } }, '404': { $ref: '#/components/responses/NotFound' } }
+  /projects/{projectId}/files:
+    get:
+      security: [ { bearerAuth: [] } ]
+      summary: List reusable source CSV assets owned by a project
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { name: kind, in: query, required: false, schema: { type: string, enum: [SOURCE_CSV], default: SOURCE_CSV } }
+      responses: { '200': { description: Source assets, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FileAsset' } } } } }, '404': { $ref: '#/components/responses/NotFound' } }
+    post:
+      security: [ { bearerAuth: [] } ]
+      summary: Upload a project-owned CSV source asset
+      parameters: [ { $ref: '#/components/parameters/ProjectId' } ]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses: { '201': { description: Stored source asset, content: { application/json: { schema: { $ref: '#/components/schemas/FileAsset' } } } }, '400': { $ref: '#/components/responses/ValidationError' }, '404': { $ref: '#/components/responses/NotFound' }, '413': { description: File too large } }
+  /projects/{projectId}/files/{assetId}:
+    get:
+      security: [ { bearerAuth: [] } ]
+      summary: Read metadata for a project-owned file asset
+      parameters: [ { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/AssetId' } ]
+      responses: { '200': { description: File asset, content: { application/json: { schema: { $ref: '#/components/schemas/FileAsset' } } } }, '404': { $ref: '#/components/responses/NotFound' } }
+  /projects/{projectId}/files/{assetId}/download:
+    get:
+      security: [ { bearerAuth: [] } ]
+      summary: Download a project-owned source or output CSV
+      parameters: [ { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/AssetId' } ]
+      responses: { '200': { description: CSV file stream, content: { text/csv: { schema: { type: string, format: binary } } } }, '404': { $ref: '#/components/responses/NotFound' } }
   /operator/workers:
     get:
       security: [ { bearerAuth: [] } ]
@@ -94,6 +126,8 @@ components:
   parameters:
     ProjectId: { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
     JobId: { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    ArtifactId: { name: artifactId, in: path, required: true, schema: { type: string, format: uuid } }
+    AssetId: { name: assetId, in: path, required: true, schema: { type: string, format: uuid } }
     KeyId: { name: keyId, in: path, required: true, schema: { type: string, format: uuid } }
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 128 } }
     Cursor: { name: cursor, in: query, schema: { type: string } }
@@ -133,7 +167,7 @@ components:
     NotificationJobRequest: { type: object, additionalProperties: false, required: [jobType, payload, priority], properties: { jobType: { type: string, enum: [SEND_NOTIFICATION] }, payload: { $ref: '#/components/schemas/NotificationPayload' }, priority: { type: string, enum: [HIGH, DEFAULT, LOW] }, scheduledAt: { type: string, format: date-time }, maxAttempts: { type: integer, minimum: 1, maximum: 4, default: 4 }, webhookUrl: { type: string, format: uri, maxLength: 2048 } } }
     ReportPayload: { type: object, additionalProperties: false, required: [template, periodStart, periodEnd], properties: { template: { enum: [SALES_SUMMARY, JOB_AUDIT] }, periodStart: { type: string, format: date }, periodEnd: { type: string, format: date } } }
     EmailPayload: { type: object, additionalProperties: false, required: [template, recipient, variables], properties: { template: { enum: [ORDER_CONFIRMED, JOB_FAILED] }, recipient: { type: string, format: email }, variables: { type: object, additionalProperties: { type: string }, maxProperties: 20 } } }
-    FilePayload: { type: object, additionalProperties: false, required: [sourceObjectRef, operation], properties: { sourceObjectRef: { type: string, maxLength: 512 }, operation: { enum: [CSV_VALIDATE, JSON_NORMALIZE] } } }
+    FilePayload: { type: object, additionalProperties: false, required: [sourceAssetId, operation], properties: { sourceAssetId: { type: string, format: uuid }, operation: { enum: [CSV_VALIDATE, CSV_NORMALIZE] } } }
     NotificationPayload: { type: object, additionalProperties: false, required: [channel, recipient, template], properties: { channel: { enum: [EMAIL] }, recipient: { type: string, format: email }, template: { enum: [JOB_COMPLETED, JOB_FAILED] } } }
     JobAccepted: { type: object, required: [jobId, runId, status, statusUrl], properties: { jobId: { type: string, format: uuid }, runId: { type: string, format: uuid }, status: { $ref: '#/components/schemas/JobStatus' }, statusUrl: { type: string } } }
     JobStatus: { type: string, enum: [PENDING, QUEUED, RUNNING, RETRY_WAIT, COMPLETED, FAILED, CANCELLED] }
@@ -142,8 +176,9 @@ components:
     ExecutionAttempt: { type: object, properties: { id: { type: string, format: uuid }, attemptNumber: { type: integer }, status: { enum: [RUNNING, COMPLETED, FAILED, RETRY_SCHEDULED, ABANDONED] }, startedAt: { type: string, format: date-time, nullable: true }, finishedAt: { type: string, format: date-time, nullable: true }, errorCode: { type: string, nullable: true }, result: { oneOf: [ { $ref: '#/components/schemas/ReportResult' }, { $ref: '#/components/schemas/EmailResult' }, { $ref: '#/components/schemas/FileResult' }, { $ref: '#/components/schemas/NotificationResult' } ], nullable: true }, resultRef: { type: string, nullable: true } } }
     ReportResult: { type: object, additionalProperties: false, required: [type, artifactRef], properties: { type: { type: string, enum: [GENERATE_REPORT] }, artifactRef: { type: string, maxLength: 512 } } }
     EmailResult: { type: object, additionalProperties: false, required: [type, providerMessageId], properties: { type: { type: string, enum: [SEND_EMAIL] }, providerMessageId: { type: string, maxLength: 256 } } }
-    FileResult: { type: object, additionalProperties: false, required: [type, artifactRef, recordCount], properties: { type: { type: string, enum: [PROCESS_FILE] }, artifactRef: { type: string, maxLength: 512 }, recordCount: { type: integer, minimum: 0 } } }
+    FileResult: { type: object, additionalProperties: false, required: [type, sourceAssetId, cleanedAssetId, errorAssetId, totalRows, validRows, rejectedRows, duplicatesRemoved], properties: { type: { type: string, enum: [PROCESS_FILE] }, sourceAssetId: { type: string, format: uuid }, cleanedAssetId: { type: string, format: uuid }, errorAssetId: { type: string, format: uuid }, totalRows: { type: integer, minimum: 0 }, validRows: { type: integer, minimum: 0 }, rejectedRows: { type: integer, minimum: 0 }, duplicatesRemoved: { type: integer, minimum: 0 } } }
     NotificationResult: { type: object, additionalProperties: false, required: [type, providerMessageId], properties: { type: { type: string, enum: [SEND_NOTIFICATION] }, providerMessageId: { type: string, maxLength: 256 } } }
     WorkerHealth: { type: object, required: [id, instanceName, status, lastHeartbeatAt], properties: { id: { type: string, format: uuid }, instanceName: { type: string }, status: { enum: [HEALTHY, STALE, DRAINING] }, lastHeartbeatAt: { type: string, format: date-time } } }
     JobPage: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Job' } }, nextCursor: { type: string, nullable: true } } }
+    FileAsset: { type: object, required: [id, kind, filename, contentType, sizeBytes, sha256, createdAt], properties: { id: { type: string, format: uuid }, kind: { enum: [SOURCE_CSV, CLEANED_CSV, ERROR_CSV, REPORT] }, filename: { type: string }, contentType: { type: string }, sizeBytes: { type: integer, format: int64 }, sha256: { type: string }, rowCount: { type: integer, nullable: true }, header: { type: array, items: { type: string } }, createdAt: { type: string, format: date-time } } }
     Error: { type: object, required: [code, message, correlationId], properties: { code: { type: string, example: IDEMPOTENCY_KEY_REUSED }, message: { type: string }, correlationId: { type: string } } }

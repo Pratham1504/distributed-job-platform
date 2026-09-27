@@ -1,6 +1,7 @@
 package io.jobplatform.projects;
 
 import io.jobplatform.jobs.JobNotFoundException;
+import io.jobplatform.security.ProductPrincipal;
 import java.time.Instant;
 import java.sql.Timestamp;
 import java.util.List;
@@ -28,5 +29,19 @@ public class ProjectService {
     public void requireOwnership(UUID projectId, UUID userId) {
         Boolean owned=jdbc.queryForObject("select exists(select 1 from projects where id=? and owner_id=? and status='ACTIVE')",Boolean.class,projectId,userId);
         if (!Boolean.TRUE.equals(owned)) throw new JobNotFoundException("Project not found.");
+    }
+
+    /**
+     * Applies the same project boundary to browser users and project-scoped API keys.
+     * Returning "not found" for another project intentionally avoids revealing its existence.
+     */
+    public void requireAccess(UUID projectId, ProductPrincipal principal) {
+        if (principal.isApiKey()) {
+            if (!projectId.equals(principal.apiKeyProjectId())) {
+                throw new JobNotFoundException("Project not found.");
+            }
+            return;
+        }
+        requireOwnership(projectId, principal.userId());
     }
 }
