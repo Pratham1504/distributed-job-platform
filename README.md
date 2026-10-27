@@ -6,6 +6,10 @@ This repository implements the current product specification in `job-platform-de
 
 The implemented application includes JWT sessions, project-scoped API keys, durable job/run/attempt history, PostgreSQL scheduling, a transactional outbox, RabbitMQ dispatch, weighted priority consumers, leases and recovery, cancellation, manual retry, Redis quotas, structured observability, and a React dashboard. The primary product flow is secure CSV upload, background validation or normalization, and authorised cleaned/error CSV downloads. The backend integration suite starts PostgreSQL, RabbitMQ, and Redis in containers to exercise the end-to-end path.
 
+## Architecture
+
+![Architecture diagram showing the API client and React dashboard connecting to the Spring Boot API, PostgreSQL, Redis quotas, private file storage, RabbitMQ priority queues, background workers, schedule and retry dispatcher, expired lease recovery, outbox publisher, and Prometheus and Grafana.](docs/images/architecture.png)
+
 ## Prerequisites
 
 - Java 21
